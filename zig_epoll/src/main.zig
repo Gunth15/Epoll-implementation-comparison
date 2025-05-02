@@ -8,8 +8,29 @@ const Telemetry = root.Telemetry;
 const print = std.debug.print;
 
 fn log_handler(watcher: *Telemetry) !void {
+    const project_dir = try std.fs.cwd().openDir("..", .{});
+
+    project_dir.makeDir("results") catch |err| {
+        switch (err) {
+            std.posix.MakeDirError.PathAlreadyExists => {},
+            else => return err,
+        }
+    };
+
+    const output_dir = try project_dir.openDir("results", .{});
+
+    const csv = try output_dir.createFile("zig.csv", .{});
+    defer csv.close();
+
+    _ = try csv.write("total,finished,average,min,max\n");
+
     while (true) {
-        print("\x1b[2J\x1b[H\x1b[36mConnections: {}/sec\n Average Latency: {}ms\n Lowest Latency: {}ms\n Highest latency {}ms\n\x1b[0m", watcher.GetData());
+        const data = watcher.GetData();
+        print("\x1b[2J\x1b[H\x1b[36mConnections: {}/sec\n Finished Connections: {}/sec\n Average Latency: {}ms\n Lowest Latency: {}ms\n Highest latency {}ms\n\x1b[0m", data);
+
+        var buff: [128]u8 = undefined;
+        _ = try csv.write(try std.fmt.bufPrint(&buff, "{},{},{},{},{}\n", data));
+
         std.time.sleep(1 * std.time.ns_per_s);
     }
 }
@@ -49,7 +70,6 @@ const AppData = struct {
 
 //TODO: Measure throughtput req/sec(go)
 //TODO: Reduce memory usage when no connections and not task to do
-///TODO: Make watcher thread make pretty csv file of progress
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
