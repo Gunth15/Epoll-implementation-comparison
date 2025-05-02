@@ -1,0 +1,85 @@
+const std = @import("std");
+const Thread = @import("std").Thread;
+const root = @import("root.zig");
+const Server = root.AsyncTcpListener(1, *AppData);
+const Connection = root.Connection;
+const Telemetry = root.Telemetry;
+
+const print = std.debug.print;
+
+fn log_handler(watcher: *Telemetry) !void {
+    while (true) {
+        print("\x1b[2J\x1b[H\x1b[36mConnections: {}/sec\n Average Latency: {}ms\n Lowest Latency: {}ms\n Highest latency {}ms\n\x1b[0m", watcher.GetData());
+        std.time.sleep(1 * std.time.ns_per_s);
+    }
+}
+
+fn server_handle(conn: *Server.PoolData) anyerror!void {
+    switch (conn.connection.tag) {
+        .CONNECTED => {
+            conn.data.map_lock.lock();
+            defer conn.data.map_lock.unlock();
+
+            const id = try conn.data.watcher.WatchConnection();
+            try conn.data.connectionid_to_timeid.put(conn.connection.id, id);
+
+            try conn.connection.connection.stream.writeAll("HI\n");
+        },
+        .CLOSED => {
+            conn.data.map_lock.lock();
+            defer conn.data.map_lock.unlock();
+
+            const id = conn.data.connectionid_to_timeid.get(conn.connection.id).?;
+
+            try conn.data.watcher.StopWatchingConnection(id);
+            conn.connection.connection.stream.close();
+        },
+        .DATA => {
+            var buf: [1024]u8 = undefined;
+            _ = try conn.connection.connection.stream.readAll(&buf);
+        },
+    }
+}
+
+const AppData = struct {
+    watcher: *Telemetry,
+    connectionid_to_timeid: std.AutoHashMap(u32, u32),
+    map_lock: Thread.Mutex = Thread.Mutex{},
+};
+
+//TODO: Measure throughtput req/sec(go)
+//TODO: Reduce memory usage when no connections and not task to do
+///TODO: Make watcher thread make pretty csv file of progress
+pub fn main() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
+    const allocator = gpa.allocator();
+
+    defer {
+        switch (gpa.deinit()) {
+            .leak => print("Leaked Memory\n", .{}),
+            .ok => print("No leaks\n", .{}),
+        }
+    }
+
+    var watcher = try Telemetry.init(allocator);
+    defer watcher.deinit();
+
+    var data = AppData{ .watcher = &watcher, .connectionid_to_timeid = std.AutoHashMap(u32, u32).init(allocator) };
+
+    const watcher_thread = try Thread.spawn(.{}, log_handler, .{&watcher});
+
+    var server = try Server
+        .init(
+        [4]u8{ 127, 0, 0, 1 },
+        8080,
+        allocator,
+        64,
+        server_handle,
+    );
+    defer server.deinit();
+
+    try server.serve(-1, &data);
+
+    data.connectionid_to_timeid.deinit();
+    watcher_thread.join();
+}
