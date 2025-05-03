@@ -250,7 +250,7 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
                                 }
                             }
                             timeout += 1;
-                            if (timeout == 100) {
+                            if (timeout == 1000) {
                                 args.context.thread_status[args.id] = ThreadStatus.WAITING;
                                 std.debug.print("sleep time\n", .{});
                             }

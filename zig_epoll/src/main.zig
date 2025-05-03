@@ -1,7 +1,7 @@
 const std = @import("std");
 const Thread = @import("std").Thread;
 const root = @import("root.zig");
-const Server = root.AsyncTcpListener(1, *AppData);
+const Server = root.AsyncTcpListener(8, *AppData);
 const Connection = root.Connection;
 const Telemetry = root.Telemetry;
 
@@ -53,11 +53,15 @@ fn server_handle(conn: *Server.PoolData) anyerror!void {
             const id = conn.data.connectionid_to_timeid.get(conn.connection.id).?;
 
             try conn.data.watcher.StopWatchingConnection(id);
-            conn.connection.connection.stream.close();
         },
         .DATA => {
             var buf: [1024]u8 = undefined;
-            _ = try conn.connection.connection.stream.readAll(&buf);
+            _ = conn.connection.connection.stream.readAll(&buf) catch |err| {
+                print("Error Reading {}", .{err});
+                conn.connection.connection.stream.close();
+                const id = conn.data.connectionid_to_timeid.get(conn.connection.id).?;
+                try conn.data.watcher.StopWatchingConnection(id);
+            };
         },
     }
 }
@@ -68,8 +72,9 @@ const AppData = struct {
     map_lock: Thread.Mutex = Thread.Mutex{},
 };
 
-//TODO: Measure throughtput req/sec(go)
+//TODO: Should be macro seconds
 //TODO: Reduce memory usage when no connections and not task to do
+//TODO: fix busy waiting and remove sleep time
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
