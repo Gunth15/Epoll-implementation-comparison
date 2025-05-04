@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const threads = 1000
+const threads = 800
 
 const text = `
 Lorem ipsum dolor sit amet consectetur adipiscing elit.
@@ -63,17 +63,20 @@ func run_request(sender chan<- time.Duration) {
 			fmt.Printf("Error: %s", err)
 			continue
 		}
+		conn.SetDeadline(time.Now().Add(5 * time.Second))
 
 		_, err = conn.Write([]byte(text))
 		if err != nil {
-			fmt.Printf("Error: %s", err)
+			// fmt.Printf("Error: %s", err)
+			conn.Close()
 			continue
 		}
 
 		buff := make([]byte, 1024)
 		_, err = conn.Read(buff)
 		if err != nil {
-			fmt.Printf("Error: %s", err)
+			// fmt.Printf("Error: %s", err)
+			conn.Close()
 			continue
 		}
 		sender <- time.Since(timer)
@@ -130,12 +133,10 @@ func main() {
 		}
 
 		fmt.Printf("\x1b[2J\x1b[H\x1b[33m"+`Connections: %d/sec
- Finished Connections:%d
- Processing Connections:%dms
  Average Roundtrip time: %dms
  Max Roundtrip: %dms
  Min Roundtrip %dms
-`+"\x1b[0m", threads, finished, processing, average, max_round, min_round)
+`+"\x1b[0m", finished, average, max_round, min_round)
 		time.Sleep(1 * time.Second)
 	}
 }

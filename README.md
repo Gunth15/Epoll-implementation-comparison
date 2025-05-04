@@ -28,11 +28,20 @@ I will try to use all advantages to the each language when I can.
 
 ## Zig implementation
 
-I'm very happy with the Zig implementation overall. I was able to express undefined behavior and unreachable states very easy which made it easy for prototyping.
+### Mistakes
+
+There was a lot of mistakes I made. Some of the most notable was not using `* const` when I should have and not utilizing Zig generics to their full potential until I really got the hang of them while I was implementing my thread pool and trying to avoid using dynamic dispatch.
+One mistake that hurt my implementation greatly was the leveraging the standard library Server object when I should have just rolled my own version. Because of this, I could not accept request in edge-triggered mode because if the request failed in anyway, the poller would remain blocked.
+
+### Summary
+
+I'm very happy with the Zig implementation overall. I was able to express undefined behavior and unreachable states very easy which made it easy for prototyping. More memory efficient than expected as well.
 The idea that "everything is a struct" was hard to wrap my head around at first, but when I cam to understand it, my abstractions became easier to make.
-The language has a strong belief in using as little memory as possible, and I watch some of the talks by Andre Kelly witch influenced my designs for the better I feel.
+The language has a strong belief in using as little memory as possible, and I watch some of the talks by Andre Kelly witch influenced my designs.
 Zig looks ugly at first, but when you actually start programming, it's really intuitive.
 Can't wait to program with it more.
+The focus on passing allocators is also a huge bonus when it come to dynamic memory management.
+IN the future I want to explore Zig's build system.
 
 ## Rust implementation
 
