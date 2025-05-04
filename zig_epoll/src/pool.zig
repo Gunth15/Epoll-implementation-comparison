@@ -76,8 +76,6 @@ const RingBufferError = error{
 };
 
 //fixed size circular queue. Thread safe
-//NOTE: First element is index of 1.
-//NOTE: index 0 is cleared
 pub fn RingBuffer(T: type, comptime size: u32) type {
     return struct {
         const Self = @This();
@@ -166,6 +164,7 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
         local_queues: [pool_size]LocalBuff = [_]LocalBuff{LocalBuff{}} ** pool_size,
         threads: [pool_size]Thread = undefined,
         thread_status: [pool_size]ThreadStatus = [_]ThreadStatus{ThreadStatus.WAITING} ** pool_size,
+        status_con: Thread.Condition = Thread.Condition{},
         exec_task: Task,
 
         const ThreadStatus = enum { WORKING, WAITING, ABORT };
@@ -188,9 +187,8 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
         //enqueues task and wakes up sleeping(waiting) threads
         pub fn enqueue(self: *Self, task_data: TaskData) anyerror!void {
             try self.global.enqueue(task_data);
-            for (&self.thread_status) |*status| {
-                status.* = ThreadStatus.WORKING;
-            }
+
+            self.status_con.broadcast();
         }
 
         //waits for threads to finish
@@ -204,6 +202,7 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
             for (&self.thread_status) |*status| {
                 status.* = ThreadStatus.ABORT;
             }
+            self.status_con.broadcast();
             self.wait();
             self.global.deinit();
         }
@@ -216,8 +215,17 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
                 switch (args.context.thread_status[args.id]) {
                     ThreadStatus.ABORT => break,
                     ThreadStatus.WAITING => {
-                        std.time.sleep(300);
-                        continue;
+                        //Wait until signaled then immediately released
+                        var mut = Thread.Mutex{};
+                        mut.lock();
+                        defer mut.unlock();
+                        args.context.status_con.wait(&mut);
+                        //May have to check if ABORT has been called just in case
+                        args.context.thread_status[args.id] =
+                            if (args.context.thread_status[args.id] != ThreadStatus.ABORT)
+                                ThreadStatus.WORKING
+                            else
+                                ThreadStatus.ABORT;
                     },
                     ThreadStatus.WORKING => {
                         if (counter % 61 == 0) {
@@ -250,9 +258,8 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
                                 }
                             }
                             timeout += 1;
-                            if (timeout == 1000) {
+                            if (timeout == 100) {
                                 args.context.thread_status[args.id] = ThreadStatus.WAITING;
-                                std.debug.print("sleep time\n", .{});
                             }
                             continue;
                         };

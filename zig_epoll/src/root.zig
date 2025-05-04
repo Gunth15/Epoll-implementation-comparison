@@ -74,7 +74,12 @@ pub fn AsyncTcpListener(pool_size: comptime_int, comptime AppData: type) type {
             try self.thread_pool.dispatch();
             const pool_data = PoolData{ .data = app_data, .context = self };
             while (true) {
-                try self.poller.poll(&self.server, timeout, pool_data);
+                self.poller.poll(&self.server, timeout, pool_data) catch |err| {
+                    switch (err) {
+                        TcpPoller(AppData).WaitError.InterruptorTimeout => continue,
+                        else => return err,
+                    }
+                };
             }
         }
 

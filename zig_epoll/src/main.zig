@@ -1,7 +1,7 @@
 const std = @import("std");
 const Thread = @import("std").Thread;
 const root = @import("root.zig");
-const Server = root.AsyncTcpListener(8, *AppData);
+const Server = root.AsyncTcpListener(10, *AppData);
 const Connection = root.Connection;
 const Telemetry = root.Telemetry;
 
@@ -44,7 +44,7 @@ fn server_handle(conn: *Server.PoolData) anyerror!void {
             const id = try conn.data.watcher.WatchConnection();
             try conn.data.connectionid_to_timeid.put(conn.connection.id, id);
 
-            try conn.connection.connection.stream.writeAll("HI\n");
+            _ = conn.connection.connection.stream.write("HI\n") catch {};
         },
         .CLOSED => {
             conn.data.map_lock.lock();
@@ -52,16 +52,19 @@ fn server_handle(conn: *Server.PoolData) anyerror!void {
 
             const id = conn.data.connectionid_to_timeid.get(conn.connection.id).?;
 
-            try conn.data.watcher.StopWatchingConnection(id);
+            conn.data.watcher.StopWatchingConnection(id) catch |err| {
+                print("Error: {}", .{err});
+            };
         },
         .DATA => {
             var buf: [1024]u8 = undefined;
-            _ = conn.connection.connection.stream.readAll(&buf) catch |err| {
-                print("Error Reading {}", .{err});
-                conn.connection.connection.stream.close();
-                const id = conn.data.connectionid_to_timeid.get(conn.connection.id).?;
-                try conn.data.watcher.StopWatchingConnection(id);
-            };
+            const reader = conn.connection.connection.stream.reader();
+            while (true) {
+                const size = reader.read(&buf) catch break;
+                if (size == 0) {
+                    break;
+                }
+            }
         },
     }
 }
@@ -72,9 +75,7 @@ const AppData = struct {
     map_lock: Thread.Mutex = Thread.Mutex{},
 };
 
-//TODO: Should be macro seconds
 //TODO: Reduce memory usage when no connections and not task to do
-//TODO: fix busy waiting and remove sleep time
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     const allocator = gpa.allocator();
@@ -91,20 +92,19 @@ pub fn main() !void {
 
     var data = AppData{ .watcher = &watcher, .connectionid_to_timeid = std.AutoHashMap(u32, u32).init(allocator) };
 
-    const watcher_thread = try Thread.spawn(.{}, log_handler, .{&watcher});
+    _ = try Thread.spawn(.{}, log_handler, .{&watcher});
 
     var server = try Server
         .init(
         [4]u8{ 127, 0, 0, 1 },
         8080,
         allocator,
-        64,
+        100,
         server_handle,
     );
     defer server.deinit();
 
-    try server.serve(-1, &data);
+    try server.serve(1_000, &data);
 
     data.connectionid_to_timeid.deinit();
-    watcher_thread.join();
 }

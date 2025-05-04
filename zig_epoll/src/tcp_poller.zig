@@ -32,7 +32,7 @@ pub fn TcpPoller(AppData: type) type {
         connections: std.ArrayList(?PollConnection),
 
         //Main listen server event that is freed when this object is deinitialized
-        server_event: *linux.epoll_event,
+        server_event: linux.epoll_event,
 
         //Tcp poll has three states
         handle: *const fn (*const PollConnection, AppData) anyerror!void = undefined,
@@ -43,14 +43,15 @@ pub fn TcpPoller(AppData: type) type {
             try connections.ensureUnusedCapacity(50);
 
             const epollfd: i32 = @intCast(linux.epoll_create());
-            var server_event = linux.epoll_event{
+            const server_event = linux.epoll_event{
                 .data = linux.epoll_data{ .fd = server.stream.handle },
-                .events = linux.EPOLL.ET | linux.EPOLL.IN | linux.EPOLL.OUT,
+                //edge triggered not working correctly
+                .events = linux.EPOLL.IN | linux.EPOLL.OUT,
             };
 
-            const self = Self{ .connections = connections, .epoll_fd = epollfd, .allocator = allocator, .server_event = &server_event, .max_events = max_events };
+            var self = Self{ .connections = connections, .epoll_fd = epollfd, .allocator = allocator, .server_event = server_event, .max_events = max_events };
 
-            const err: isize = @bitCast(linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, server.stream.handle, self.server_event));
+            const err: isize = @bitCast(linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, server.stream.handle, &self.server_event));
             if (err <= -1) {
                 return switch (posix.errno(err)) {
                     .EXIST => PollError.ConnectionExist,
@@ -81,7 +82,12 @@ pub fn TcpPoller(AppData: type) type {
             for (events) |event| {
                 //accepts the connection and then uses handler(SHOULD NOT BLOCK)
                 if (event.data.fd == server.stream.handle) {
-                    const server_connection = try server.accept();
+                    const server_connection = server.accept() catch |err| {
+                        switch (err) {
+                            posix.AcceptError.WouldBlock => break,
+                            else => return err,
+                        }
+                    };
 
                     var poll_conn = PollConnection{
                         .id = @intCast(0),
@@ -102,8 +108,9 @@ pub fn TcpPoller(AppData: type) type {
                         ptr.* = poll_conn;
                     }
 
+                    try set_nonblocking(&poll_conn);
                     try self.handle(&poll_conn, args);
-                    try self.add_connection(poll_conn);
+                    try self.add_connection(&poll_conn);
                 } else if ((event.events & linux.EPOLL.IN) != 0) {
                     const id: u32 = event.data.u32;
                     var connection = self.connections.items[id] orelse {
@@ -114,7 +121,8 @@ pub fn TcpPoller(AppData: type) type {
                     try self.handle(&connection, args);
                 }
                 //On connection close
-                if (event.events & (linux.EPOLL.HUP | linux.EPOLL.RDHUP) != 0) {
+                //TODO: add error state
+                if (event.events & (linux.EPOLL.HUP | linux.EPOLL.RDHUP | linux.EPOLL.ERR) != 0) {
                     const id: u32 = event.data.u32;
                     defer self.connections.items[id] = null;
                     var connection = self.connections.items[id] orelse {
@@ -123,12 +131,12 @@ pub fn TcpPoller(AppData: type) type {
 
                     connection.tag = .CLOSED;
                     try self.handle(&connection, args);
-                    try self.drop_connection(connection);
+                    try self.drop_connection(&connection);
                 }
             }
         }
 
-        const WaitError = error{
+        pub const WaitError = error{
             //event pointed to by event(s) does not have write permission
             NoWritePermission,
             // Interrupted by a signal handler or timoute
@@ -159,10 +167,10 @@ pub fn TcpPoller(AppData: type) type {
         }
 
         //add conection
-        fn add_connection(self: *Self, conn: PollConnection) PollError!void {
+        fn add_connection(self: *Self, conn: *const PollConnection) PollError!void {
             var conn_event = linux.epoll_event{
                 .data = linux.epoll_data{ .u32 = conn.id },
-                .events = linux.EPOLL.IN | linux.EPOLL.ET | linux.EPOLL.HUP | linux.EPOLL.RDHUP,
+                .events = linux.EPOLL.IN | linux.EPOLL.ET | linux.EPOLL.HUP | linux.EPOLL.RDHUP | linux.EPOLL.ERR,
             };
             const err: isize = @bitCast(linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, conn.connection.stream.handle, &conn_event));
             if (err <= -1) {
@@ -175,7 +183,7 @@ pub fn TcpPoller(AppData: type) type {
             }
         }
         //drop connection
-        fn drop_connection(self: *Self, conn: PollConnection) PollError!void {
+        fn drop_connection(self: *Self, conn: *const PollConnection) PollError!void {
             const err: isize = @bitCast(linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_DEL, conn.connection.stream.handle, null));
             if (err <= -1) {
                 return switch (posix.errno(err)) {
@@ -185,6 +193,13 @@ pub fn TcpPoller(AppData: type) type {
                     else => unreachable,
                 };
             }
+            conn.connection.stream.close();
+        }
+
+        fn set_nonblocking(conn: *const PollConnection) posix.FcntlError!void {
+            const sockfd = conn.connection.stream.handle;
+            const flags = try posix.fcntl(sockfd, posix.F.GETFL, 0);
+            _ = try posix.fcntl(sockfd, posix.F.SETFL, flags | linux.SOCK.NONBLOCK);
         }
     };
 }
