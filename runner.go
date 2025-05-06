@@ -6,7 +6,12 @@ import (
 	"time"
 )
 
-const threads = 800
+const (
+	ClearNCursor = "\x1b[2J\x1b[H"
+	Yellow       = "\x1b[33m"
+	White        = "\x1b[0m"
+	threads      = 1000
+)
 
 const text = `
 Lorem ipsum dolor sit amet consectetur adipiscing elit.
@@ -57,12 +62,12 @@ Ad litora torquent per conubia nostra inceptos himenaeos.
 
 func run_request(sender chan<- time.Duration) {
 	for {
-		timer := time.Now()
 		conn, err := net.Dial("tcp4", "localhost:8080")
 		if err != nil {
 			fmt.Printf("Error: %s", err)
 			continue
 		}
+		timer := time.Now()
 		conn.SetDeadline(time.Now().Add(5 * time.Second))
 
 		_, err = conn.Write([]byte(text))
@@ -94,11 +99,6 @@ func main() {
 	}
 
 	// TODO: maybe connection drop rate aswell
-	// total connections
-	// total connections that finished this time interval
-	// Average roundtrip time
-	// Max roundtrip time
-	// Min roundtrip time
 	for {
 		processing := 0
 		finished := 0
@@ -132,11 +132,11 @@ func main() {
 			average = 0
 		}
 
-		fmt.Printf("\x1b[2J\x1b[H\x1b[33m"+`Connections: %d/sec
+		fmt.Printf(ClearNCursor+Yellow+`Connections: %d/sec
  Average Roundtrip time: %dms
  Max Roundtrip: %dms
  Min Roundtrip %dms
-`+"\x1b[0m", finished, average, max_round, min_round)
+`+White, finished, average, max_round, min_round)
 		time.Sleep(1 * time.Second)
 	}
 }

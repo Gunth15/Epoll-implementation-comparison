@@ -28,6 +28,8 @@ I will try to use all advantages to the each language when I can.
 
 ## Zig implementation
 
+It was very easy and enjoyable to write test in Zig. Especially since test is just a keyword.
+
 ### Mistakes
 
 There was a lot of mistakes I made. Some of the most notable was not using `* const` when I should have and not utilizing Zig generics to their full potential until I really got the hang of them while I was implementing my thread pool and trying to avoid using dynamic dispatch.
@@ -38,17 +40,21 @@ One mistake that hurt my implementation greatly was the leveraging the standard 
 I'm very happy with the Zig implementation overall. I was able to express undefined behavior and unreachable states very easy which made it easy for prototyping. More memory efficient than expected as well.
 The idea that "everything is a struct" was hard to wrap my head around at first, but when I cam to understand it, my abstractions became easier to make.
 The language has a strong belief in using as little memory as possible, and I watch some of the talks by Andre Kelly witch influenced my designs.
-Zig looks ugly at first, but when you actually start programming, it's really intuitive.
+Zig looks ugly at first, but when you actually start programming, it's really intuitive. Probably some of the best language syntax I have ever seen(which is not saying much).
 Can't wait to program with it more.
 The focus on passing allocators is also a huge bonus when it come to dynamic memory management.
-IN the future I want to explore Zig's build system.
+In the future I want to explore Zig's build system.
 
 ## Rust implementation
 
+One of the first concerns I had with rust implementation from my past experiences with rust was "do I need a dependency?". Unlike Zig, rust does not have a built-in C compiler nor is it as friendly to C code. I did not want to waste my time making my own interface, <ul>so I decided to use Mio; A popular rust crate for Epoll.</ul>, I decided to use the libC crate because it is maintained by the rust foundation, so It's as close as I'm willing to get as comparison.
+
 ## Go runner
 
-Thank You for taking the time for looking at my repo. Please leave feed back if meaningful.
+The go runner simply spends up a batch go routines and measure time from connection to close.
+Once again go proves to be a good time lol.
 
 ## Conclusion
 
+Thank You for taking the time for looking at my repo. Please leave feed back if meaningful.
 The performance does not actually matter very much because most of the time both programs will be limited by I/O.
