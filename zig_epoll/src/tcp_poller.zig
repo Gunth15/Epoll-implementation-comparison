@@ -100,6 +100,7 @@ pub fn TcpPoller(AppData: type) type {
                         if (conn == null) {
                             poll_conn.id = @intCast(index);
                             self.connections.items[index] = poll_conn;
+                            break;
                         }
                     }
                     if (poll_conn.id == 0) {
