@@ -1,0 +1,6 @@
+results
+zig_epoll/zig-out/*
+zig_epoll/.zig-cache/*
+rust_epoll/target
+rust_epoll/Cargo.lock
+
