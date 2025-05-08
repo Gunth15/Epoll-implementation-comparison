@@ -10,7 +10,7 @@ const (
 	ClearNCursor = "\x1b[2J\x1b[H"
 	Yellow       = "\x1b[33m"
 	White        = "\x1b[0m"
-	threads      = 1000
+	threads      = 800
 )
 
 const text = `
@@ -62,12 +62,12 @@ Ad litora torquent per conubia nostra inceptos himenaeos.
 
 func run_request(sender chan<- time.Duration) {
 	for {
+		timer := time.Now()
 		conn, err := net.Dial("tcp4", "localhost:8080")
 		if err != nil {
 			fmt.Printf("Error: %s", err)
 			continue
 		}
-		timer := time.Now()
 		conn.SetDeadline(time.Now().Add(5 * time.Second))
 
 		_, err = conn.Write([]byte(text))
