@@ -1,9 +1,10 @@
 use libc::{self, EPOLLERR, EPOLLET, EPOLLHUP, EPOLLRDHUP, c_int, epoll_event};
 use std::alloc::{self, Layout};
 use std::ffi::c_uint;
-use std::io::Error;
+use std::io::{Error, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::ptr::null_mut;
+use std::thread;
 use std::{net, os::fd::AsRawFd};
 
 #[derive(Debug, Clone)]
@@ -67,9 +68,9 @@ impl Poller {
             })
         }
     }
-    pub fn poll<F>(&mut self, timeout: i32, listener: &TcpListener, connection_closure: F)
+    pub fn poll<F>(&mut self, timeout: i32, listener: &TcpListener, mut connection_closure: F)
     where
-        F: Fn(&Connection),
+        F: FnMut(&mut Connection),
     {
         let events = self.wait(timeout).expect("Could not get events");
 
@@ -82,6 +83,7 @@ impl Poller {
                         stream,
                         state: ConnectionState::Opened,
                     },
+                    Err(err) if err.kind() == ErrorKind::WouldBlock => continue,
                     Err(err) => panic!("Could Not Poll {err:?}"),
                 };
 
@@ -102,16 +104,26 @@ impl Poller {
                     self.connections.push(Some(conn));
                 }
 
+                self.add_connection(
+                    self.connections
+                        .get(usize::try_from(id).unwrap())
+                        .unwrap()
+                        .as_ref()
+                        .unwrap()
+                        .stream
+                        .as_raw_fd(),
+                    id,
+                )
+                .unwrap();
                 let conn = self
                     .connections
-                    .get(usize::try_from(id).unwrap())
+                    .get_mut(usize::try_from(id).unwrap())
                     .expect("Index is not the id of the connection")
-                    .as_ref()
+                    .as_mut()
                     .expect("id should be valid at this point");
                 conn.stream
                     .set_nonblocking(true)
                     .expect("Unable to set new connection to non-blocking");
-                self.add_connection(conn.stream.as_raw_fd(), id).unwrap();
                 connection_closure(conn);
             } else if (event.events & libc::EPOLLIN as u32) != 0 {
                 let id = event.u64;
@@ -141,7 +153,7 @@ impl Poller {
                 let conn_slot = self.connections.get(id).unwrap().as_ref();
                 self.delete_connection(conn_slot.unwrap().stream.as_raw_fd())
                     .unwrap();
-                connection_closure(conn_slot.as_ref().unwrap());
+                connection_closure(self.connections.get_mut(id).unwrap().as_mut().unwrap());
                 *self.connections.get_mut(id).unwrap() = None;
             }
         }
@@ -203,5 +215,56 @@ impl Poller {
             }
         }
         Ok(())
+    }
+}
+
+//Make request to poller
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn poller_test() {
+        let listener = TcpListener::bind("localhost:8080").unwrap();
+        let mut poller = Poller::new(20, &listener).expect("Did not create poller");
+
+        let (mut closed, mut opened, mut data) = (false, false, false);
+
+        thread::spawn(|| {
+            for _ in 0..5 {
+                let mut stream =
+                    TcpStream::connect("localhost:8080").expect("Could not connect to test server");
+                stream
+                    .write_all("Blah".as_bytes())
+                    .expect("Error sending response");
+            }
+        });
+
+        for _ in 0..5 {
+            poller.poll(-1, &listener, |conn| match conn.state {
+                ConnectionState::Data => {
+                    let mut buff: Vec<u8> = vec![0; 6];
+                    println!("Got Data");
+                    let size = conn.stream.read(&mut buff[0..]).unwrap();
+                    buff.resize(size, 0);
+                    let str = String::from_utf8(buff).unwrap();
+                    println!("The data is {str}");
+                    data = true;
+                }
+                ConnectionState::Closed => {
+                    println!("Connection closed");
+                    closed = true;
+                }
+                ConnectionState::Opened => {
+                    println!("Connection opened");
+                    opened = true;
+                }
+            });
+        }
+        assert!(opened, "Connection never opened");
+        assert!(data, "Conection never recieved data from socket");
+        assert!(closed, "Connection never closed");
+
+        poller.close();
     }
 }
