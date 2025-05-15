@@ -10,7 +10,7 @@ const (
 	ClearNCursor = "\x1b[2J\x1b[H"
 	Yellow       = "\x1b[33m"
 	White        = "\x1b[0m"
-	threads      = 800
+	threads      = 1000
 )
 
 const text = `

@@ -31,8 +31,6 @@ pub fn MPSCQueue(comptime T: type) type {
         }
 
         pub fn enqueue(self: *Self, payload: T) std.mem.Allocator.Error!void {
-            self.queue_mutex.lock();
-            defer self.queue_mutex.unlock();
             const node = try self.allocator.create(WorkQueue.Node);
             node.*.data = payload;
             //If there is a tail, place after tail
@@ -49,8 +47,6 @@ pub fn MPSCQueue(comptime T: type) type {
 
         //Dequeued items are owned by the caller after removal
         pub fn dequeue(self: *Self) ?T {
-            self.queue_mutex.lock();
-            defer self.queue_mutex.unlock();
             if (self.work_queue.first) |_| {
                 //copies memory back to stack
                 const node = self.work_queue.popFirst() orelse unreachable;
@@ -66,6 +62,15 @@ pub fn MPSCQueue(comptime T: type) type {
                 //Queue is empty, set head to tail
                 return null;
             }
+        }
+        pub fn is_empty(self: Self) bool {
+            return self.work_queue.first == null;
+        }
+        pub fn lock(self: *Self) void {
+            self.queue_mutex.lock();
+        }
+        pub fn unlock(self: *Self) void {
+            self.queue_mutex.unlock();
         }
     };
 }
@@ -86,9 +91,6 @@ pub fn RingBuffer(T: type, comptime size: u32) type {
         mut: Thread.Mutex = Thread.Mutex{},
 
         pub fn enqueue(self: *Self, payload: T) RingBufferError!void {
-            self.mut.lock();
-            defer self.mut.unlock();
-
             //Get index of tail. If the tail is equal to the head, buffer is considered full
             if (self.isFull()) return RingBufferError.BufferFull;
 
@@ -101,9 +103,6 @@ pub fn RingBuffer(T: type, comptime size: u32) type {
             }
         }
         pub fn dequeue(self: *Self) RingBufferError!T {
-            self.mut.lock();
-            defer self.mut.unlock();
-
             if (self.isEmpty()) return RingBufferError.BufferEmpty;
 
             defer {
@@ -120,8 +119,6 @@ pub fn RingBuffer(T: type, comptime size: u32) type {
             return self.data[@intCast(self.head.?)];
         }
         pub fn steal(self: *Self) RingBufferError!T {
-            self.mut.lock();
-            defer self.mut.unlock();
             if (self.isEmpty()) {
                 return RingBufferError.BufferEmpty;
             }
@@ -137,11 +134,17 @@ pub fn RingBuffer(T: type, comptime size: u32) type {
             return self.data[@intCast(self.tail.?)];
         }
 
-        fn isEmpty(self: *const Self) bool {
+        pub fn isEmpty(self: *const Self) bool {
             return self.head == null;
         }
-        fn isFull(self: *const Self) bool {
-            return self.head != null and self.tail != null and (self.tail.? + 1) % self.data.len == self.head.?;
+        pub fn isFull(self: *const Self) bool {
+            return self.head != null and self.tail != null and ((self.tail.? + 1) % self.data.len == self.head.?);
+        }
+        pub fn lock(self: *Self) void {
+            self.mut.lock();
+        }
+        pub fn unlock(self: *Self) void {
+            self.mut.unlock();
         }
     };
 }
@@ -186,6 +189,9 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
 
         //enqueues task and wakes up sleeping(waiting) threads
         pub fn enqueue(self: *Self, task_data: TaskData) anyerror!void {
+            self.global.lock();
+            defer self.global.unlock();
+
             try self.global.enqueue(task_data);
 
             self.status_con.broadcast();
@@ -229,42 +235,59 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
                     },
                     ThreadStatus.WORKING => {
                         if (counter % 61 == 0) {
-                            if (args.context.global.dequeue()) |task| {
-                                local.enqueue(task) catch |err| {
-                                    switch (err) {
-                                        RingBufferError.BufferFull => try args.context.global.enqueue(task),
-                                        else => unreachable,
-                                    }
-                                };
+                            defer args.context.global.unlock();
+                            defer local.unlock();
+                            args.context.global.lock();
+                            local.lock();
+
+                            if (!args.context.global.is_empty() and !local.isFull()) {
+                                try local.enqueue(args.context.global.dequeue().?);
                             }
                         }
 
-                        //if queue not empty, do work
+                        //global poll counter
                         counter += 1;
-                        var task = local.dequeue() catch {
+
+                        local.lock();
+                        //if queue not empty, do work
+                        if (!local.isEmpty()) {
+                            defer local.unlock();
+                            var task = try local.dequeue();
+                            timeout = 0;
+                            args.context.exec_task(&task) catch |err| {
+                                std.debug.print("Thread {} Error: {}", .{ args.id, err });
+                            };
+                        } else {
                             //else steal work
+                            local.unlock();
                             for (0..args.context.local_queues.len) |t_id| {
-                                if (t_id != args.id) {
-                                    const task = args.context.local_queues[t_id].steal() catch {
-                                        try Thread.yield();
-                                        continue;
-                                    };
-                                    local.enqueue(task) catch |err| {
-                                        switch (err) {
-                                            RingBufferError.BufferFull => try args.context.global.enqueue(task),
-                                            else => unreachable,
-                                        }
-                                    };
+                                if (t_id == args.id) continue;
+                                //Shortest Id takes priority thus we wait on smallest id to finish
+                                if (t_id < args.id) {
+                                    defer args.context.local_queues[t_id].unlock();
+                                    args.context.local_queues[t_id].lock();
+                                    defer local.unlock();
+                                    local.lock();
+                                    if (!args.context.local_queues[t_id].isEmpty() and !local.isFull()) {
+                                        const task = try args.context.local_queues[t_id].steal();
+                                        try local.enqueue(task);
+                                    }
+                                } else {
+                                    defer local.unlock();
+                                    local.lock();
+                                    defer args.context.local_queues[t_id].unlock();
+                                    args.context.local_queues[t_id].lock();
+                                    if (!args.context.local_queues[t_id].isEmpty() and !local.isFull()) {
+                                        const task = try args.context.local_queues[t_id].steal();
+                                        try local.enqueue(task);
+                                    }
                                 }
                             }
                             timeout += 1;
                             if (timeout == 100) {
                                 args.context.thread_status[args.id] = ThreadStatus.WAITING;
                             }
-                            continue;
-                        };
-                        timeout = 0;
-                        try args.context.exec_task(&task);
+                        }
                     },
                 }
             }
@@ -290,6 +313,9 @@ fn work_task(num: *const number_task) !void {
 
 fn make_task(q: *MPSCQueue(number_task)) !void {
     for (0..20) |value| {
+        defer q.unlock();
+        q.lock();
+
         const task = number_task{ .num = @intCast(value) };
         try q.enqueue(task);
     }
@@ -298,6 +324,8 @@ fn make_task(q: *MPSCQueue(number_task)) !void {
 fn do_task(q: *MPSCQueue(number_task)) !void {
     var timer = try std.time.Timer.start();
     while (timer.read() <= 1 * std.time.ns_per_s) {
+        defer q.unlock();
+        q.lock();
         const task: number_task = q.dequeue() orelse continue;
         task.print_num();
         std.time.sleep(100);
@@ -383,7 +411,7 @@ test "Thread Pool" {
     try pool.dispatch();
 
     //Main Loop
-    for (0..30) |i| {
+    for (0..500) |i| {
         std.debug.print("Queueing Task {}\n", .{i});
         const num = number_task{ .num = @intCast(i) };
         try pool.enqueue(num);

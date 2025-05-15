@@ -84,7 +84,15 @@ pub fn TcpPoller(AppData: type) type {
                 if (event.data.fd == server.stream.handle) {
                     const server_connection = server.accept() catch |err| {
                         switch (err) {
-                            posix.AcceptError.WouldBlock => break,
+                            posix.AcceptError.WouldBlock => continue,
+                            posix.AcceptError.SystemFdQuotaExceeded => {
+                                std.debug.print("Reached maxed connections", .{});
+                                continue;
+                            },
+                            posix.AcceptError.ProcessFdQuotaExceeded => {
+                                std.debug.print("Reached maxed connections", .{});
+                                continue;
+                            },
                             else => return err,
                         }
                     };

@@ -1,7 +1,7 @@
 const std = @import("std");
 const Thread = @import("std").Thread;
 const root = @import("root.zig");
-const Server = root.AsyncTcpListener(10, *AppData);
+const Server = root.AsyncTcpListener(3, *AppData);
 const Connection = root.Connection;
 const Telemetry = root.Telemetry;
 
@@ -57,7 +57,7 @@ fn server_handle(conn: *Server.PoolData) anyerror!void {
             };
         },
         .DATA => {
-            var buf: [1024]u8 = undefined;
+            var buf: [124]u8 = undefined;
             const reader = conn.connection.connection.stream.reader();
             while (true) {
                 const size = reader.read(&buf) catch break;
@@ -99,12 +99,12 @@ pub fn main() !void {
         [4]u8{ 127, 0, 0, 1 },
         8080,
         allocator,
-        100,
+        128,
         server_handle,
     );
     defer server.deinit();
 
-    try server.serve(1_000, &data);
+    try server.serve(-1, &data);
 
     data.connectionid_to_timeid.deinit();
 }
