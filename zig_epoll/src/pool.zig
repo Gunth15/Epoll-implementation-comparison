@@ -248,13 +248,9 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
                         //global poll counter
                         counter += 1;
 
-                        const empty = {
-                            local.lock();
-                            defer local.unlock();
-                            return local.isEmpty();
-                        };
+                        local.lock();
                         //if queue not empty, do work
-                        if (!empty) {
+                        if (!local.isEmpty()) {
                             defer local.unlock();
                             var task = try local.dequeue();
                             timeout = 0;
@@ -263,6 +259,7 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
                             };
                         } else {
                             //else steal work
+                            local.unlock();
                             for (0..args.context.local_queues.len) |t_id| {
                                 if (t_id == args.id) continue;
                                 //Shortest Id takes priority thus we wait on smallest id to finish
