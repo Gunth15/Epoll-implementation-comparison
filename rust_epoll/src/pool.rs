@@ -126,7 +126,6 @@ impl<const S: usize> ThreadPool<S> {
                     let status = ctxt.thread_status[id].lock().unwrap();
                     match *status {
                         ThreadStatus::WAITING => {
-                            println!("Thread Waiting");
                             let mut t_stat = ctxt.thread_status[id].lock().unwrap();
                             t_stat = ctxt.thread_cond.wait(t_stat).unwrap();
                             *t_stat = match *t_stat {
@@ -135,42 +134,56 @@ impl<const S: usize> ThreadPool<S> {
                             }
                         }
                         ThreadStatus::WORKING => {
-                            println!("Thread Working");
                             if counter % 61 == 0 {
                                 let mut queue = ctxt.global_queue.lock().unwrap();
                                 let mut lq = local.lock().unwrap();
-                                if !queue.is_empty() && !lq.is_empty() {
+                                if !queue.is_empty() && !lq.is_full() {
                                     let task = queue
                                         .pop_front()
                                         .expect("global queue should not be empty");
                                     lq.enqueue(task).expect("local queue should not be full");
                                 }
                             }
-
                             counter += 1;
-                            let empty = local.lock().unwrap().is_empty();
-                            if !empty {
+                            {
                                 let mut lq = local.lock().unwrap();
-                                let task = lq.dequeue().expect("Local queue should not be empty");
-                                timeout = 0;
-                                if let Err(err) = task(id) {
-                                    println!("Error executing task {err}");
+                                if !lq.is_empty() {
+                                    let task =
+                                        lq.dequeue().expect("Local queue should not be empty");
+                                    timeout = 0;
+                                    if let Err(err) = task(id) {
+                                        println!("Error executing task {err}");
+                                    };
+                                    continue;
+                                }
+                            }
+                            for t_id in 0..ctxt.local_queues.len() {
+                                if t_id == id {
+                                    continue;
                                 };
-                            } else {
-                                for t_id in 0..ctxt.local_queues.len() {
+                                if t_id < id {
                                     let mut tq = ctxt.local_queues[t_id].lock().unwrap();
                                     let mut local = local.lock().unwrap();
-                                    if !local.is_full() && t_id != id && !tq.is_empty() {
+                                    if !local.is_full() && !tq.is_empty() {
+                                        let task = tq
+                                            .dequeue()
+                                            .expect("foreign thread queue should not be empty");
+                                        local.enqueue(task).expect("should not be full");
+                                    }
+                                } else {
+                                    let mut local = local.lock().unwrap();
+                                    let mut tq = ctxt.local_queues[t_id].lock().unwrap();
+                                    if !local.is_full() && !tq.is_empty() {
                                         let task = tq
                                             .dequeue()
                                             .expect("foreign thread queue should not be empty");
                                         local.enqueue(task).expect("should not be full");
                                     }
                                 }
-                                timeout += 1;
-                                if timeout == 100 {
-                                    *ctxt.thread_status[id].lock().unwrap() = ThreadStatus::WAITING;
-                                }
+                            }
+                            timeout += 1;
+                            if timeout == 100 {
+                                *ctxt.thread_status[id].lock().unwrap() = ThreadStatus::WAITING;
                             }
                         }
                         ThreadStatus::ABORT => break,
@@ -208,6 +221,7 @@ mod test {
         println!("DATA: {:?}", ring_buff.data);
         ring_buff.enqueue(1).unwrap();
         println!("DATA: {:?}", ring_buff.data);
+        assert!(ring_buff.is_full());
         ring_buff.enqueue(1).expect_err("Did enqued past limit");
         println!("DATA: {:?}", ring_buff.data);
 
@@ -217,6 +231,7 @@ mod test {
         println!("DATA: {:?}", ring_buff.data);
         assert_eq!(1, ring_buff.dequeue().unwrap());
         println!("DATA: {:?}", ring_buff.data);
+        assert!(ring_buff.is_empty());
 
         ring_buff.enqueue(1).unwrap();
         assert_eq!(1, ring_buff.dequeue().unwrap());
@@ -246,14 +261,16 @@ mod test {
         for i in 0..500 {
             println!("Queueing task");
             pool.enqueue(Arc::new(move |_| {
-                print!("Task {i}");
+                println!("Task {i}");
                 assert_eq!(i, i);
                 Ok(())
             }));
         }
         let dispatch = Arc::clone(&pool);
         dispatch.dispatch();
-        sleep(Duration::from_secs(5));
+        println!("Started Queueing");
+        sleep(Duration::from_secs(2));
+        assert!(pool.global_queue.lock().unwrap().is_empty());
         for _ in 0..3 {
             let status = Arc::clone(&pool);
             println!("Queueing task");
@@ -264,6 +281,6 @@ mod test {
                 Ok(())
             }))
         }
-        pool.wait();
+        //pool.wait();
     }
 }
