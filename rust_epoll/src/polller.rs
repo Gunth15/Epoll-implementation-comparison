@@ -4,7 +4,7 @@ use std::ffi::c_uint;
 use std::io::{Error, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::ptr::null_mut;
-use std::thread;
+use std::thread::{self};
 use std::{net, os::fd::AsRawFd};
 
 #[derive(Debug, Clone)]
