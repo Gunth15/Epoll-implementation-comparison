@@ -47,14 +47,30 @@ In the future I want to explore Zig's build system.
 
 ## Rust implementation
 
-One of the first concerns I had with rust implementation from my past experiences with rust was "do I need a dependency?". Unlike Zig, rust does not have a built-in C compiler nor is it as friendly to C code. I did not want to waste my time making my own interface, <ul>so I decided to use Mio; A popular rust crate for Epoll.</ul>, I decided to use the libC crate because it is maintained by the rust foundation, so It's as close as I'm willing to get as comparison.
+One of the first concerns I had with rust implementation from my past experiences with rust was "do I need a dependency?". Unlike Zig, rust does not have a built-in C compiler nor is it as friendly to C code. I did not want to waste my time making my own interface, I decided to use the libC crate because it is maintained by the rust foundation, so It's as close as I'm willing to get as comparison.
+<br/>
+For the rust design of the thread pool, I decided to use closures because it is a feature of the language that zig does not have, and I thought it would make my implementation better than my zig version which has one function handle and the user manages the variations in types.
+To be honest, it was not as satisfying as I thought it would be and I don't prefer one method over another. That being said, it did greatly reduce unnecessary boiler plate when testing.
+
+### Fearless Concurrency
+
+The thing I really like about rust was fearless concurrency, however it is not what I though it was.
+As expected, the borrow checker works great to make mutexes are properly locked and unlocked, but there is are sometimes where I wish I had more manual control of unlocking the mutex.
+Some may argue I should avoid those situations entirely, but I disagree.
+Luckily a work around was to declare another scope most of the time.
+The hardest part of my Rust implementation by far was concurrency because dealing with `Arc`, `Mutex`, and traits in rust is not enjoyable for me and feels like I'm writing a mathematical proof.
+However I do see the value in proximity of critical infrastructure software.
 
 ## Go runner
 
-The go runner simply spends up a batch go routines and measure time from connection to close.
+The go runner simply spins up a bunch of go routines and measure time from connection to close(round-trip time).
 Once again go proves to be a good time lol.
 
 ## Conclusion
 
-Thank You for taking the time for looking at my repo. Please leave feed back if meaningful.
+I wrote the zig version first as I plan to do more with that after I finish working on another side project(stay tuned).
+With that in mind, it was incredibly simple to rewrite a lot of the functionality in rust showing a great overlap between both of these cool languages.
+
 The performance does not actually matter very much because most of the time both programs will be limited by I/O.
+
+Thank You for taking the time for looking at my repo. Please leave feed back if meaningful.
