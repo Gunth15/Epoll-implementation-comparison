@@ -250,7 +250,7 @@ pub fn ThreadPool(pool_size: comptime_int, TaskData: type) type {
 
                         const empty = {
                             local.lock();
-                            defer local.ulock();
+                            defer local.unlock();
                             return local.isEmpty();
                         };
                         //if queue not empty, do work
