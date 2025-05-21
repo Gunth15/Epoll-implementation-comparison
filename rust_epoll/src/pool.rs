@@ -92,10 +92,10 @@ enum ThreadStatus {
     WORKING,
 }
 
-type ThreadErr = Box<dyn 'static + Error + Send>;
-type ThreadFunc = Arc<dyn Fn(usize) -> Result<(), ThreadErr> + Send + Sync>;
+pub type ThreadErr = Box<dyn 'static + Error + Send>;
+pub type ThreadFunc = Arc<dyn Fn(usize) -> Result<(), ThreadErr> + Send + Sync>;
 
-struct ThreadPool<const S: usize> {
+pub struct ThreadPool<const S: usize> {
     global_queue: Mutex<VecDeque<ThreadFunc>>,
     local_queues: [Mutex<RingBuffer<ThreadFunc, S>>; S],
     threads: Mutex<Option<[JoinHandle<()>; S]>>,

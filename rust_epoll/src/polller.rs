@@ -14,7 +14,7 @@ enum ConnectionState {
     Data,
 }
 #[derive(Debug)]
-struct Connection {
+pub struct Connection {
     state: ConnectionState,
     stream: TcpStream,
     socket_addr: SocketAddr,
@@ -31,7 +31,7 @@ impl Clone for Connection {
     }
 }
 
-struct Poller {
+pub struct Poller {
     epollfd: c_uint,
     max_events: c_uint,
     events: libc::epoll_event,
@@ -70,7 +70,7 @@ impl Poller {
     }
     pub fn poll<F>(&mut self, timeout: i32, listener: &TcpListener, mut connection_closure: F)
     where
-        F: FnMut(&mut Connection),
+        F: FnMut(Connection),
     {
         let events = self.wait(timeout).expect("Could not get events");
 
@@ -124,7 +124,7 @@ impl Poller {
                 conn.stream
                     .set_nonblocking(true)
                     .expect("Unable to set new connection to non-blocking");
-                connection_closure(conn);
+                connection_closure(conn.clone());
             } else if (event.events & libc::EPOLLIN as u32) != 0 {
                 let id = event.u64;
                 let conn = self
@@ -134,7 +134,7 @@ impl Poller {
                     .as_mut()
                     .unwrap();
                 conn.state = ConnectionState::Data;
-                connection_closure(conn);
+                connection_closure(conn.clone());
             }
             if event.events & (libc::EPOLLHUP | libc::EPOLLRDHUP | libc::EPOLLERR) as u32 != 0 {
                 let id = usize::try_from(event.u64).unwrap();
@@ -153,8 +153,9 @@ impl Poller {
                 let conn_slot = self.connections.get(id).unwrap().as_ref();
                 self.delete_connection(conn_slot.unwrap().stream.as_raw_fd())
                     .unwrap();
-                connection_closure(self.connections.get_mut(id).unwrap().as_mut().unwrap());
-                *self.connections.get_mut(id).unwrap() = None;
+
+                let conn = self.connections.get_mut(id).unwrap().take().unwrap();
+                connection_closure(conn);
             }
         }
     }
@@ -241,7 +242,7 @@ mod test {
         });
 
         for _ in 0..5 {
-            poller.poll(-1, &listener, |conn| match conn.state {
+            poller.poll(-1, &listener, |mut conn| match conn.state {
                 ConnectionState::Data => {
                     let mut buff: Vec<u8> = vec![0; 6];
                     println!("Got Data");
