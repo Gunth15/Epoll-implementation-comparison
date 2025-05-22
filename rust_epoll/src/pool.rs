@@ -108,7 +108,7 @@ impl<const S: usize> ThreadPool<S> {
             global_queue: Mutex::new(VecDeque::new()),
             local_queues: std::array::from_fn(|_| Mutex::new(RingBuffer::default())),
             threads: Mutex::new(None),
-            thread_status: std::array::from_fn(|_| Mutex::new(ThreadStatus::WORKING)),
+            thread_status: std::array::from_fn(|_| Mutex::new(ThreadStatus::WAITING)),
             thread_cond: Condvar::new(),
         }
     }
@@ -256,6 +256,8 @@ mod test {
     fn thread_pool() {
         println!("Thread pool test");
         let pool: Arc<ThreadPool<3>> = Arc::new(ThreadPool::new());
+        let dispatch = Arc::clone(&pool);
+        dispatch.dispatch();
 
         for i in 0..500 {
             println!("Queueing task");
@@ -265,8 +267,6 @@ mod test {
                 Ok(())
             }));
         }
-        let dispatch = Arc::clone(&pool);
-        dispatch.dispatch();
         println!("Started Queueing");
         sleep(Duration::from_secs(1));
         assert!(pool.global_queue.lock().unwrap().is_empty());
