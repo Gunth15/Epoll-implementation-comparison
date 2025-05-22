@@ -119,7 +119,7 @@ impl Poller {
                     .connections
                     .get_mut(usize::try_from(id).unwrap())
                     .expect("Index is not the id of the connection")
-                    .as_mut()
+                    .as_ref()
                     .expect("id should be valid at this point");
                 conn.stream
                     .set_nonblocking(true)
@@ -138,7 +138,6 @@ impl Poller {
             }
             if event.events & (libc::EPOLLHUP | libc::EPOLLRDHUP | libc::EPOLLERR) as u32 != 0 {
                 let id = usize::try_from(event.u64).unwrap();
-
                 match self
                     .connections
                     .get_mut(id)

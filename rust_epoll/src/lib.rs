@@ -37,10 +37,7 @@ impl<const S: usize> AsyncListener<S> {
             self.poller.poll(timeout, &self.server, move |conn| {
                 let conn = Arc::new(conn);
                 let closure = Arc::clone(&closure);
-                let task: ThreadFunc = Arc::new(move |id| {
-                    println!("Task is about to work");
-                    closure(id, Arc::clone(&conn))
-                });
+                let task: ThreadFunc = Arc::new(move |id| closure(id, Arc::clone(&conn)));
                 eq.enqueue(task);
             });
         }

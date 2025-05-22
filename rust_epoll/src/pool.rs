@@ -87,9 +87,9 @@ impl<T: Clone, const S: usize> RingBuffer<T, S> {
 
 #[derive(Debug, Clone, Copy)]
 enum ThreadStatus {
-    WAITING,
-    ABORT,
-    WORKING,
+    Waiting,
+    Abort,
+    Working,
 }
 
 pub type ThreadErr = Box<dyn 'static + Error + Send>;
@@ -108,7 +108,7 @@ impl<const S: usize> ThreadPool<S> {
             global_queue: Mutex::new(VecDeque::new()),
             local_queues: std::array::from_fn(|_| Mutex::new(RingBuffer::default())),
             threads: Mutex::new(None),
-            thread_status: std::array::from_fn(|_| Mutex::new(ThreadStatus::WAITING)),
+            thread_status: std::array::from_fn(|_| Mutex::new(ThreadStatus::Waiting)),
             thread_cond: Condvar::new(),
         }
     }
@@ -124,15 +124,14 @@ impl<const S: usize> ThreadPool<S> {
                 loop {
                     let status = ctxt.thread_status[id].lock().unwrap();
                     match *status {
-                        ThreadStatus::WAITING => {
-                            let mut t_stat = ctxt.thread_status[id].lock().unwrap();
-                            t_stat = ctxt.thread_cond.wait(t_stat).unwrap();
+                        ThreadStatus::Waiting => {
+                            let mut t_stat = ctxt.thread_cond.wait(status).unwrap();
                             *t_stat = match *t_stat {
-                                ThreadStatus::ABORT => ThreadStatus::ABORT,
-                                _ => ThreadStatus::WORKING,
+                                ThreadStatus::Abort => ThreadStatus::Abort,
+                                _ => ThreadStatus::Working,
                             }
                         }
-                        ThreadStatus::WORKING => {
+                        ThreadStatus::Working => {
                             if counter % 61 == 0 {
                                 let mut queue = ctxt.global_queue.lock().unwrap();
                                 let mut lq = local.lock().unwrap();
@@ -182,10 +181,13 @@ impl<const S: usize> ThreadPool<S> {
                             }
                             timeout += 1;
                             if timeout == 100 {
-                                *ctxt.thread_status[id].lock().unwrap() = ThreadStatus::WAITING;
+                                *ctxt.thread_status[id].lock().unwrap() = ThreadStatus::Waiting;
                             }
                         }
-                        ThreadStatus::ABORT => break,
+                        ThreadStatus::Abort => {
+                            println!("Shutting Down");
+                            break;
+                        }
                     }
                 }
             })
@@ -275,7 +277,7 @@ mod test {
             println!("Queueing task");
             pool.enqueue(Arc::new(move |id| {
                 let mut status = status.thread_status[id].lock().unwrap();
-                *status = ThreadStatus::ABORT;
+                *status = ThreadStatus::Abort;
 
                 Ok(())
             }))

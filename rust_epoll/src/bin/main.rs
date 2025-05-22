@@ -7,4 +7,5 @@ fn main() {
         println!("Got connection {id}");
         Ok(())
     });
+    println!("Cool");
 }
