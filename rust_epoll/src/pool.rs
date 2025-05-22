@@ -117,7 +117,6 @@ impl<const S: usize> ThreadPool<S> {
         *self.threads.lock().unwrap() = Some(std::array::from_fn(|index| {
             let ctxt = Arc::clone(&self);
             std::thread::spawn(move || {
-                println!("Thread Started");
                 let id = index;
                 let mut timeout: u32 = 0;
                 let mut counter: u32 = 0;
@@ -269,7 +268,7 @@ mod test {
         let dispatch = Arc::clone(&pool);
         dispatch.dispatch();
         println!("Started Queueing");
-        sleep(Duration::from_secs(2));
+        sleep(Duration::from_secs(1));
         assert!(pool.global_queue.lock().unwrap().is_empty());
         for _ in 0..3 {
             let status = Arc::clone(&pool);

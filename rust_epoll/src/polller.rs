@@ -179,11 +179,6 @@ impl Poller {
             Ok(Vec::from_raw_parts(events, size, max_events))
         }
     }
-    pub fn close(self) {
-        unsafe {
-            libc::close(i32::try_from(self.epollfd).unwrap());
-        }
-    }
     fn add_connection(&self, fd: c_int, id: u64) -> Result<(), Error> {
         unsafe {
             let mut event = epoll_event {
@@ -216,6 +211,13 @@ impl Poller {
             }
         }
         Ok(())
+    }
+}
+impl Drop for Poller {
+    fn drop(&mut self) {
+        unsafe {
+            libc::close(i32::try_from(self.epollfd).unwrap());
+        }
     }
 }
 
@@ -265,7 +267,5 @@ mod test {
         assert!(opened, "Connection never opened");
         assert!(data, "Conection never recieved data from socket");
         assert!(closed, "Connection never closed");
-
-        poller.close();
     }
 }

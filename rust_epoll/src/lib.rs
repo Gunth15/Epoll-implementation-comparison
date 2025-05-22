@@ -26,22 +26,23 @@ impl<const S: usize> AsyncListener<S> {
     }
     pub fn serve<F>(&mut self, timeout: i32, conn_closure: F)
     where
-        F: FnMut(usize, Connection) -> Result<(), ThreadErr> + 'static + Send + Sync,
+        F: Fn(usize, Arc<Connection>) -> Result<(), ThreadErr> + 'static + Send + Sync,
     {
         let pool = Arc::clone(&self.thread_pool);
         pool.dispatch();
-        let eq = Arc::clone(&self.thread_pool);
-        self.poller.poll(timeout, &self.server, move |conn| {
-            let cl: ThreadFunc = Arc::new(move |id| conn_closure(id, conn));
-            eq.enqueue(cl);
-        });
+        let closure = Arc::new(conn_closure);
+        loop {
+            let eq = Arc::clone(&self.thread_pool);
+            let closure = Arc::clone(&closure);
+            self.poller.poll(timeout, &self.server, move |conn| {
+                let conn = Arc::new(conn);
+                let closure = Arc::clone(&closure);
+                let task: ThreadFunc = Arc::new(move |id| {
+                    println!("Task is about to work");
+                    closure(id, Arc::clone(&conn))
+                });
+                eq.enqueue(task);
+            });
+        }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
 }
