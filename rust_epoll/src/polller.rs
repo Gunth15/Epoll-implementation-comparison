@@ -8,17 +8,17 @@ use std::thread::{self};
 use std::{net, os::fd::AsRawFd};
 
 #[derive(Debug, Clone)]
-enum ConnectionState {
+pub enum ConnectionState {
     Closed,
     Opened,
     Data,
 }
 #[derive(Debug)]
 pub struct Connection {
-    state: ConnectionState,
+    pub state: ConnectionState,
     stream: TcpStream,
-    socket_addr: SocketAddr,
-    id: u64,
+    pub socket_addr: SocketAddr,
+    pub id: u64,
 }
 impl Clone for Connection {
     fn clone(&self) -> Self {

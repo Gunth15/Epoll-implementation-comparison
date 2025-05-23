@@ -122,14 +122,14 @@ impl<const S: usize> ThreadPool<S> {
                 let mut counter: u32 = 0;
                 let local = &ctxt.local_queues[id];
                 loop {
-                    let status = ctxt.thread_status[id].lock().unwrap();
+                    let mut status = ctxt.thread_status[id].lock().unwrap();
                     match *status {
                         ThreadStatus::Waiting => {
                             let mut t_stat = ctxt.thread_cond.wait(status).unwrap();
                             *t_stat = match *t_stat {
                                 ThreadStatus::Abort => ThreadStatus::Abort,
                                 _ => ThreadStatus::Working,
-                            }
+                            };
                         }
                         ThreadStatus::Working => {
                             if counter % 61 == 0 {
@@ -164,7 +164,7 @@ impl<const S: usize> ThreadPool<S> {
                                     let mut local = local.lock().unwrap();
                                     if !local.is_full() && !tq.is_empty() {
                                         let task = tq
-                                            .dequeue()
+                                            .steal()
                                             .expect("foreign thread queue should not be empty");
                                         local.enqueue(task).expect("should not be full");
                                     }
@@ -173,7 +173,7 @@ impl<const S: usize> ThreadPool<S> {
                                     let mut tq = ctxt.local_queues[t_id].lock().unwrap();
                                     if !local.is_full() && !tq.is_empty() {
                                         let task = tq
-                                            .dequeue()
+                                            .steal()
                                             .expect("foreign thread queue should not be empty");
                                         local.enqueue(task).expect("should not be full");
                                     }
@@ -181,7 +181,7 @@ impl<const S: usize> ThreadPool<S> {
                             }
                             timeout += 1;
                             if timeout == 100 {
-                                *ctxt.thread_status[id].lock().unwrap() = ThreadStatus::Waiting;
+                                *status = ThreadStatus::Waiting;
                             }
                         }
                         ThreadStatus::Abort => {
