@@ -1,6 +1,6 @@
 use std::{
     net::{TcpListener, ToSocketAddrs},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use polller::{Connection, Poller};
@@ -27,7 +27,7 @@ impl<const S: usize> AsyncListener<S> {
     }
     pub fn serve<F>(&mut self, timeout: i32, conn_closure: F)
     where
-        F: Fn(usize, Arc<Connection>) -> Result<(), ThreadErr> + 'static + Send + Sync,
+        F: Fn(usize, Arc<Mutex<Connection>>) -> Result<(), ThreadErr> + 'static + Send + Sync,
     {
         let pool = Arc::clone(&self.thread_pool);
         pool.dispatch();
@@ -36,7 +36,7 @@ impl<const S: usize> AsyncListener<S> {
             let eq = Arc::clone(&self.thread_pool);
             let closure = Arc::clone(&closure);
             self.poller.poll(timeout, &self.server, move |conn| {
-                let conn = Arc::new(conn);
+                let conn = Arc::new(Mutex::new(conn));
                 let closure = Arc::clone(&closure);
                 let task: ThreadFunc = Arc::new(move |t_id| closure(t_id, Arc::clone(&conn)));
                 eq.enqueue(task);

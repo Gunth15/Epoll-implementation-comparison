@@ -50,7 +50,12 @@ In the future I want to explore Zig's build system.
 One of the first concerns I had with rust implementation from my past experiences with rust was "do I need a dependency?". Unlike Zig, rust does not have a built-in C compiler nor is it as friendly to C code. I did not want to waste my time making my own interface, I decided to use the libC crate because it is maintained by the rust foundation, so It's as close as I'm willing to get as comparison.
 <br/>
 For the rust design of the thread pool, I decided to use closures because it is a feature of the language that zig does not have, and I thought it would make my implementation better than my zig version which has one function handle and the user manages the variations in types.
-To be honest, it was not as satisfying as I thought it would be and I don't prefer one method over another. That being said, it did greatly reduce unnecessary boiler plate when testing.
+The closures did make the event loop look even better, so I will say this is a major plus for closures in rust.
+
+### Unsafe Rust
+
+One of the most enjoyable parts for me was unsafe rust. I think it's really well made and integrates with the rest of Rust beautifully.
+Using libc within unsafe bounds was very easy and the memory strategy of implicitly laying out the memory felt natural to use when making things safe to the rest of rust.
 
 ### Fearless Concurrency
 
@@ -61,6 +66,15 @@ Luckily a work around was to declare another scope most of the time.
 The hardest part of my Rust implementation by far was concurrency because dealing with `Arc`, `Mutex`, and traits in rust is not enjoyable for me and feels like I'm writing a mathematical proof.
 However I do see the value in proximity of critical infrastructure software.
 
+### Testing and Traits
+
+The best time I had programming in rust is using rust beautiful utility functions like the `take()` method.
+One trait that I was glad to have was the `Drop` trait which allowed me to automatically close the epoll server when it went out of scope(similar to defer, but less manual)
+
+The bad part about traits was figuring out which ones I needed when doing concurrency.
+
+Testing in rust was just as good as I remembered; not to say testing in zig was bad, but it requires a lot more setup to make a full test suite. After a lot of reflection, I can confidently say Cargo is one of the best batteries included build systems out there.
+
 ## Go runner
 
 The go runner simply spins up a bunch of go routines and measure time from connection to close(round-trip time).
@@ -68,7 +82,7 @@ Once again go proves to be a good time lol.
 
 ## Conclusion
 
-I wrote the zig version first as I plan to do more with that after I finish working on another side project(stay tuned).
+I wrote the Zig version first as I plan to do more with that after I finish working on another side project(stay tuned).
 With that in mind, it was incredibly simple to rewrite a lot of the functionality in rust showing a great overlap between both of these cool languages.
 
 The performance does not actually matter very much because most of the time both programs will be limited by I/O.

@@ -16,7 +16,7 @@ pub enum ConnectionState {
 #[derive(Debug)]
 pub struct Connection {
     pub state: ConnectionState,
-    stream: TcpStream,
+    pub stream: TcpStream,
     pub socket_addr: SocketAddr,
     pub id: u64,
 }
@@ -34,7 +34,6 @@ impl Clone for Connection {
 pub struct Poller {
     epollfd: c_uint,
     max_events: c_uint,
-    events: libc::epoll_event,
     connections: Vec<Option<Connection>>,
 }
 impl Poller {
@@ -64,7 +63,6 @@ impl Poller {
                 epollfd: u32::try_from(epollfd).unwrap(),
                 max_events,
                 connections: Vec::new(),
-                events,
             })
         }
     }
