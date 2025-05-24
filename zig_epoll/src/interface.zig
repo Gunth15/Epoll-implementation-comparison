@@ -61,16 +61,18 @@ pub const Telemetry = struct {
     }
 
     //calculates average latency and throughtput. Also clears finished connections from watchlist
-    pub fn GetData(self: *Telemetry) struct { u64, u64, u64, u64, u64 } {
+    pub fn GetData(self: *Telemetry) struct { u64, u64, f64, f64, f64 } {
         var connections: u64 = 0;
         //////Critical Section
         self.finished_mut.lock();
+
         self.processing_mut.lock();
         for (self.processing.items) |timer| {
             if (timer != null) {
                 connections += 1;
             }
         }
+        self.processing_mut.unlock();
 
         var total_latency: u64 = 0;
         var finished_connections: u64 = 0;
@@ -96,16 +98,15 @@ pub const Telemetry = struct {
                 self.finished.items[index] = null;
             }
         }
-        self.processing_mut.unlock();
         self.finished_mut.unlock();
         ///////////////////////////////
-        const avrg_latency = if (finished_connections != 0) total_latency / finished_connections else 0;
+        const avrg_latency: f64 = if (finished_connections != 0) @floatFromInt(total_latency / finished_connections) else 0.0;
         return .{
             connections,
             finished_connections,
             avrg_latency / std.time.ns_per_ms,
-            min_latency / std.time.ns_per_ms,
-            max_latency / std.time.ns_per_ms,
+            @floatFromInt(min_latency / std.time.ns_per_ms),
+            @floatFromInt(max_latency / std.time.ns_per_ms),
         };
     }
 

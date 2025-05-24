@@ -102,21 +102,21 @@ func main() {
 	for {
 		processing := 0
 		finished := 0
-		var average int64
+		var average float64
 		var max_round int64 = 0
-		var min_round int64 = 1_000_000_000
-		for _, channel := range channels {
+		var min_round int64 = 0
+		for index, channel := range channels {
 			select {
 			case duration := <-channel:
 				{
 					stop_time := duration.Milliseconds()
-					average += stop_time
+					average += float64(stop_time)
 					finished += 1
 
 					if stop_time > max_round {
 						max_round = stop_time
 					}
-					if stop_time < min_round {
+					if index == 0 || stop_time < min_round {
 						min_round = stop_time
 					}
 				}
@@ -127,13 +127,13 @@ func main() {
 		}
 
 		if finished != 0 {
-			average = average / int64(finished)
+			average = average / float64(finished)
 		} else {
 			average = 0
 		}
 
 		fmt.Printf(ClearNCursor+Yellow+`Connections: %d/sec
- Average Roundtrip time: %dms
+ Average Roundtrip time: %f.3ms
  Max Roundtrip: %dms
  Min Roundtrip %dms
 `+White, finished, average, max_round, min_round)

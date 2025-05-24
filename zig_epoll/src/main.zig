@@ -26,7 +26,7 @@ fn log_handler(watcher: *Telemetry) !void {
 
     while (true) {
         const data = watcher.GetData();
-        print("\x1b[2J\x1b[H\x1b[36mConnections: {}/sec\n Finished Connections: {}/sec\n Average Latency: {}ms\n Lowest Latency: {}ms\n Highest latency {}ms\n\x1b[0m", data);
+        print("\x1b[2J\x1b[H\x1b[36mConnections: {}/sec\n Finished Connections: {}/sec\n Average Latency: {d:.3}ms\n Lowest Latency: {d:.3}ms\n Highest latency {d:.3}ms\n\x1b[0m", data);
 
         var buff: [128]u8 = undefined;
         _ = try csv.write(try std.fmt.bufPrint(&buff, "{},{},{},{},{}\n", data));
