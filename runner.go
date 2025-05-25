@@ -8,7 +8,7 @@ import (
 
 const (
 	ClearNCursor = "\x1b[2J\x1b[H"
-	Yellow       = "\x1b[33m"
+	Cyan         = "\x1b[36m"
 	White        = "\x1b[0m"
 	threads      = 1000
 )
@@ -132,8 +132,8 @@ func main() {
 			average = 0
 		}
 
-		fmt.Printf(ClearNCursor+Yellow+`Connections: %d/sec
- Average Roundtrip time: %f.3ms
+		fmt.Printf(ClearNCursor+Cyan+`Connections: %d/sec
+ Average Roundtrip time: %.3fms
  Max Roundtrip: %dms
  Min Roundtrip %dms
 `+White, finished, average, max_round, min_round)

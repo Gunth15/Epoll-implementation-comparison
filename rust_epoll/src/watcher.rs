@@ -34,7 +34,13 @@ impl Telementry {
     pub fn stop_watching_connection(&mut self, id: usize) {
         let mut processing_list = self.processing.lock().unwrap();
 
-        let timer = processing_list.get_mut(id).unwrap().take().unwrap();
+        let timer = processing_list.get_mut(id);
+        if timer.is_none() {
+            println!("Lost Connection with id {id}");
+            return;
+        }
+
+        let timer = timer.unwrap().take().unwrap();
 
         let mut finished_list = self.finished.lock().unwrap();
 

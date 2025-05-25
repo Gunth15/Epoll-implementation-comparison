@@ -4,6 +4,7 @@ use std::ffi::c_uint;
 use std::io::{Error, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::ptr::null_mut;
+use std::sync::{Arc, Mutex};
 use std::thread::{self};
 use std::{net, os::fd::AsRawFd};
 
@@ -16,15 +17,16 @@ pub enum ConnectionState {
 #[derive(Debug)]
 pub struct Connection {
     pub state: ConnectionState,
-    pub stream: TcpStream,
+    pub stream: Arc<Mutex<TcpStream>>,
     pub socket_addr: SocketAddr,
     pub id: u64,
 }
 impl Clone for Connection {
     fn clone(&self) -> Self {
+        let stream = Arc::clone(&self.stream);
         Self {
             state: self.state.clone(),
-            stream: self.stream.try_clone().unwrap(),
+            stream,
             socket_addr: self.socket_addr,
             id: self.id,
         }
@@ -78,10 +80,13 @@ impl Poller {
                     Ok((stream, socket_addr)) => Connection {
                         id: 0,
                         socket_addr,
-                        stream,
+                        stream: Arc::new(Mutex::new(stream)),
                         state: ConnectionState::Opened,
                     },
                     Err(err) if err.kind() == ErrorKind::WouldBlock => continue,
+                    Err(err) if err.raw_os_error() == Some(24) => {
+                        continue;
+                    }
                     Err(err) => panic!("Could Not Poll {err:?}"),
                 };
 
@@ -109,6 +114,8 @@ impl Poller {
                         .as_ref()
                         .unwrap()
                         .stream
+                        .lock()
+                        .unwrap()
                         .as_raw_fd(),
                     id,
                 )
@@ -120,6 +127,8 @@ impl Poller {
                     .as_ref()
                     .expect("id should be valid at this point");
                 conn.stream
+                    .lock()
+                    .unwrap()
                     .set_nonblocking(true)
                     .expect("Unable to set new connection to non-blocking");
                 connection_closure(conn.clone());
@@ -148,7 +157,7 @@ impl Poller {
                     None => panic!("Connection doe not exsit"),
                 }
                 let conn_slot = self.connections.get(id).unwrap().as_ref();
-                self.delete_connection(conn_slot.unwrap().stream.as_raw_fd())
+                self.delete_connection(conn_slot.unwrap().stream.lock().unwrap().as_raw_fd())
                     .unwrap();
 
                 let conn = self.connections.get_mut(id).unwrap().take().unwrap();
@@ -241,11 +250,12 @@ mod test {
         });
 
         for _ in 0..5 {
-            poller.poll(-1, &listener, |mut conn| match conn.state {
+            poller.poll(-1, &listener, |conn| match conn.state {
                 ConnectionState::Data => {
                     let mut buff: Vec<u8> = vec![0; 6];
                     println!("Got Data");
-                    let size = conn.stream.read(&mut buff[0..]).unwrap();
+                    let stream = Arc::clone(&conn.stream);
+                    let size = stream.lock().unwrap().read(&mut buff[0..]).unwrap();
                     buff.resize(size, 0);
                     let str = String::from_utf8(buff).unwrap();
                     println!("The data is {str}");
