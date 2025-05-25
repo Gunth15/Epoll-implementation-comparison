@@ -85,6 +85,15 @@ Once again go proves to be a good time lol.
 I wrote the Zig version first as I plan to do more with that after I finish working on another side project(stay tuned).
 With that in mind, it was incredibly simple to rewrite a lot of the functionality in rust showing a great overlap between both of these cool languages.
 
-The performance does not actually matter very much because most of the time both programs will be limited by I/O.
+### Performance
+
+The performance does not actually matter very much because most of the time both programs will be limited by I/O and I did this over localhost which has it's own optimizations.
+<br/>
+With that in mind, the rust version version served many more request at 10 threads and also served them faster, but it also had a high variance which means there is probably a lot of instability within my implementation which was also evident by all the dead time while running.
+As expected, the Rust version used more memory because I used a lot more dynamic allocations; Although it was very efficient with the memory it did use starting at 2.1Mib and never going over 2.25.
+<br/>
+The Zig version had a more reasonable variance showing greater consistency and also used way less memory with a low of 284Kib and a high of 1.02Mib. As stated before, these implementations would probably have similar memory usage if I forced the same restrictions on the Rust server.
+<br/>
+Both had similar CPU usage of around 30%
 
 Thank You for taking the time for looking at my repo. Please leave feed back if meaningful.
