@@ -156,7 +156,7 @@ pub fn TcpPoller(AppData: type) type {
             std.debug.assert(self.max_events > 0);
             std.debug.assert(timeout >= -1);
 
-            var events: []linux.epoll_event = try self.allocator.alloc(linux.epoll_event, self.max_events);
+            const events: []linux.epoll_event = try self.allocator.alloc(linux.epoll_event, self.max_events);
             errdefer self.allocator.free(events);
 
             const nfds: isize = @bitCast(linux.epoll_wait(self.epoll_fd, events.ptr, self.max_events, timeout));
@@ -169,10 +169,8 @@ pub fn TcpPoller(AppData: type) type {
                 }
             }
 
-            if (!self.allocator.resize(events, @bitCast(nfds))) {
-                std.debug.print("WARNING: could not resize memory\n", .{});
-            }
-            return events[0..@bitCast(nfds)];
+            const eve = try self.allocator.realloc(events, @bitCast(nfds));
+            return eve;
         }
 
         //add conection

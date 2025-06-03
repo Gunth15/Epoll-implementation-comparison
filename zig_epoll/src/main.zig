@@ -77,7 +77,7 @@ const AppData = struct {
 
 //TODO: Reduce memory usage when no connections and not task to do
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
+    var gpa = std.heap.DebugAllocator(.{ .thread_safe = true }).init;
     const allocator = gpa.allocator();
 
     defer {
